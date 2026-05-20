@@ -1,0 +1,17 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+#
+# Sandbox identity:
+subscription_id     = "00000000-0000-0000-0000-000000000000" # az account show --query id -o tsv
+tenant_id           = "00000000-0000-0000-0000-000000000000" # az account show --query tenantId -o tsv
+resource_group_name = "your-sandbox-rg-name"                 # az group list -o table
+
+# Lab knobs (optional overrides):
+prefix       = "aksgitops"
+node_count   = 2
+node_vm_size = "Standard_B2s"
+# kubernetes_version = "1.30"   # pin from `az aks get-versions -l <region> -o table`
+
+tags = {
+  env     = "lab"
+  purpose = "aks-gitops-lab"
+}

@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kv-reader-cli
+  namespace: default
+  labels:
+    azure.workload.identity/use: "true" # CRITICAL — triggers the webhook injection
+spec:
+  serviceAccountName: keyvault-reader # must match the federated subject's SA
+  containers:
+    - name: az
+      image: mcr.microsoft.com/azure-cli:latest
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          set -e
+          echo "Federated token file: $AZURE_FEDERATED_TOKEN_FILE"
+          echo "Client ID:           $AZURE_CLIENT_ID"
+          echo "Tenant ID:           $AZURE_TENANT_ID"
+          # Exchange the projected SA token for an AAD token (no client secret).
+          # --allow-no-subscriptions: this MI has access via a Key Vault ACCESS
+          # POLICY (data plane), not a subscription-scoped RBAC role, so it owns
+          # zero subscriptions — without this flag `az login` errors with
+          # "No subscriptions found". KV data plane only needs the token + URI.
+          az login --service-principal \
+            -u "$AZURE_CLIENT_ID" \
+            --tenant "$AZURE_TENANT_ID" \
+            --federated-token "$(cat "$AZURE_FEDERATED_TOKEN_FILE")" \
+            --allow-no-subscriptions >/dev/null
+          echo "--- logged in as:"
+          az account show --query "{user:user.name, tenant:tenantId}" -o json
+          echo "--- secret value (the payoff):"
+          az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name demo-secret --query value -o tsv
+          echo "--- done; sleeping so you can kubectl logs"
+          sleep 3600
+      env:
+        - name: KEY_VAULT_NAME
+          value: "__KEY_VAULT_NAME__" # terraform -chdir=terraform output -raw key_vault_name
+  restartPolicy: Never

@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: keyvault-reader
+  namespace: default
+  annotations:
+    # client_id of aksgitops-kv-reader-mi. Substitute __KV_READER_CLIENT_ID__ at
+    # apply time:  terraform -chdir=terraform output -raw kv_reader_client_id
+    azure.workload.identity/client-id: "__KV_READER_CLIENT_ID__"

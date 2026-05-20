@@ -1,3 +1,6 @@
+# --- Privacy: keep local tooling/notes out of git history ---
+.claude/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -216,3 +219,28 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project docs
+docs/
+
+# --- Terraform & secrets (AKS GitOps lab) ---
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+# Real var files hold values; commit only the .example
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+# NOTE: .terraform.lock.hcl is intentionally NOT ignored — commit it for reproducible provider versions.
+
+# Local environment exports (subscription id, prefix, object id) — never commit
+.env
+*.env

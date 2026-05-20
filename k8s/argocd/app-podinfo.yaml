@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: podinfo
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io # clean up managed resources on delete
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/rbpal/aks-gitops-platform.git
+    targetRevision: main
+    path: k8s/apps/podinfo # ArgoCD owns everything in this dir
+  destination:
+    server: https://kubernetes.default.svc # in-cluster
+    namespace: demo
+  syncPolicy:
+    automated:
+      prune: true # remove resources deleted from Git
+      selfHeal: true # revert manual kubectl edits back to Git
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

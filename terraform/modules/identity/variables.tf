@@ -52,6 +52,18 @@ variable "secret_value" {
   default     = "hello-from-key-vault"
 }
 
+variable "payments_sa_namespace" {
+  description = "Namespace of the payments-api ServiceAccount (Workload Identity for tx signing)."
+  type        = string
+  default     = "payments"
+}
+
+variable "payments_sa_name" {
+  description = "Name of the payments-api ServiceAccount. Must match k8s/apps/payments/serviceaccount.yaml."
+  type        = string
+  default     = "payments-api"
+}
+
 variable "tags" {
   description = "Tags."
   type        = map(string)

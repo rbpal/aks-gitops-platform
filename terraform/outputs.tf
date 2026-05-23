@@ -49,3 +49,26 @@ output "kv_reader_sa" {
   description = "namespace/name of the ServiceAccount the federated credential expects."
   value       = "${module.identity.sa_namespace}/${module.identity.sa_name}"
 }
+
+output "signing_key_name" {
+  description = "Key Vault key the payments app signs transfers with (SIGNING_KEY_NAME)."
+  value       = module.identity.signing_key_name
+}
+
+# ---- Step 05: KEDA / Service Bus ----
+
+output "servicebus_namespace_name" {
+  description = "Service Bus namespace name."
+  value       = module.servicebus.servicebus_namespace_name
+}
+
+output "servicebus_queue_name" {
+  description = "Service Bus queue name."
+  value       = module.servicebus.queue_name
+}
+
+output "servicebus_keda_connection_string" {
+  description = "SAS connection string for the KEDA secret + demo sender."
+  value       = module.servicebus.keda_connection_string
+  sensitive   = true
+}

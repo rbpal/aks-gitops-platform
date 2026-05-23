@@ -46,3 +46,13 @@ module "identity" {
   oidc_issuer_url     = module.aks.oidc_issuer_url
   tags                = var.tags
 }
+
+# Step 05 — KEDA event source: Service Bus namespace + queue + SAS auth rule.
+module "servicebus" {
+  source = "./modules/servicebus"
+
+  prefix              = var.prefix
+  resource_group_name = data.azurerm_resource_group.sandbox.name
+  location            = data.azurerm_resource_group.sandbox.location
+  tags                = var.tags
+}

@@ -32,3 +32,8 @@ output "secret_name" {
   description = "Name of the demo secret."
   value       = azurerm_key_vault_secret.demo.name
 }
+
+output "signing_key_name" {
+  description = "Name of the Key Vault EC key the payments app signs transfers with."
+  value       = azurerm_key_vault_key.tx_signer.name
+}

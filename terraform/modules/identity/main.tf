@@ -42,6 +42,7 @@ resource "azurerm_key_vault_access_policy" "admin" {
   object_id    = var.admin_object_id
 
   secret_permissions = ["Get", "List", "Set", "Delete", "Purge", "Recover"]
+  key_permissions    = ["Get", "List", "Create", "Delete", "Purge", "Recover"] # so TF can create the signing key
 }
 
 # Access policy: the managed identity gets READ on secrets — the "Key Vault
@@ -52,6 +53,7 @@ resource "azurerm_key_vault_access_policy" "kv_reader" {
   object_id    = azurerm_user_assigned_identity.kv_reader.principal_id
 
   secret_permissions = ["Get", "List"]
+  key_permissions    = ["Get", "Sign", "Verify"] # sign/verify transfers via the KV `sign` API
 }
 
 # The federated credential — THE Workload Identity link. Pins (issuer, subject)
@@ -72,4 +74,30 @@ resource "azurerm_key_vault_secret" "demo" {
   key_vault_id = azurerm_key_vault.this.id
 
   depends_on = [azurerm_key_vault_access_policy.admin]
+}
+
+# The transaction-signing key for the payments app. EC P-256, sign/verify only.
+# The pod signs by calling the Key Vault `sign` API via Workload Identity — the
+# PRIVATE KEY NEVER LEAVES THE VAULT. Granted through the access policy above, so
+# it works in the sandbox (no role assignment needed).
+resource "azurerm_key_vault_key" "tx_signer" {
+  name         = "tx-signer"
+  key_vault_id = azurerm_key_vault.this.id
+  key_type     = "EC"
+  curve        = "P-256"
+  key_opts     = ["sign", "verify"]
+
+  depends_on = [azurerm_key_vault_access_policy.admin]
+}
+
+# Second federated credential on the SAME identity: lets the payments-api
+# ServiceAccount (in the `payments` namespace) federate in and sign with the key.
+# (One MI for both demos keeps the lab simple; prod would use one MI per workload.)
+resource "azurerm_federated_identity_credential" "payments" {
+  name                = "${var.prefix}-payments-fed"
+  resource_group_name = var.resource_group_name
+  parent_id           = azurerm_user_assigned_identity.kv_reader.id
+  audience            = ["api://AzureADTokenExchange"]
+  issuer              = var.oidc_issuer_url
+  subject             = "system:serviceaccount:${var.payments_sa_namespace}:${var.payments_sa_name}"
 }

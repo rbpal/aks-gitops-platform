@@ -1,0 +1,60 @@
+# Redis = the shared ledger. The api pod and the worker pods both connect here,
+# so PENDING (written by api) and SETTLED (written by worker) live in one place.
+# In-memory only (no persistence) — the ledger is intentionally ephemeral and
+# re-seedable, which fits the 8-hour sandbox model.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: payments
+  labels:
+    app: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7.4-alpine
+          args: ["--save", "", "--appendonly", "no"]   # disable RDB + AOF: pure in-memory
+          ports:
+            - containerPort: 6379
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: payments
+  labels:
+    app: redis
+spec:
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+      targetPort: 6379
+  # ClusterIP — only reachable inside the cluster (and only from the pods the
+  # NetworkPolicy allows).

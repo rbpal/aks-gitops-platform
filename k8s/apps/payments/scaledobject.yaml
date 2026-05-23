@@ -1,0 +1,35 @@
+# KEDA: scale the settlement-worker on Service Bus queue depth, 0..5.
+# Same SAS-connection-string auth as the original demo (sandbox denies the role
+# assignment the Workload-Identity path would need). The `servicebus-conn` Secret
+# is created by scripts/deploy_payments.sh from the Terraform output.
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: azure-servicebus-auth
+  namespace: payments
+spec:
+  secretTargetRef:
+    - parameter: connection
+      name: servicebus-conn
+      key: connection-string
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: settlement-worker-scaler
+  namespace: payments
+spec:
+  scaleTargetRef:
+    name: settlement-worker
+  pollingInterval: 15      # seconds between queue-depth checks
+  cooldownPeriod: 60       # seconds idle before scaling back to zero
+  minReplicaCount: 0       # scale-to-zero when the queue is empty
+  maxReplicaCount: 5
+  triggers:
+    - type: azure-servicebus
+      metadata:
+        queueName: demo-queue
+        messageCount: "5"  # ~1 worker per 5 queued transfers
+      authenticationRef:
+        name: azure-servicebus-auth

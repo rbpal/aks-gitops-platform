@@ -10,6 +10,7 @@ A hands-on Azure platform-engineering lab: a Terraform-provisioned **AKS** clust
 - **ArgoCD** — GitOps: this repo is the source of truth and the cluster reconciles to it
 - **KEDA** — scaling a workload off Azure Service Bus queue depth (including scale-to-zero)
 - **Terraform** — all Azure infrastructure as code, organized into reusable modules
+- **Payments settlement app** — a demo service that ties it all together: signs transfers with a Key Vault key via Workload Identity, then settles them on a KEDA-autoscaled worker (see below)
 
 ## Architecture
 
@@ -78,8 +79,15 @@ terraform/
     aks/        # cluster: Overlay, Cilium, OIDC, Workload Identity, KEDA
     identity/   # Key Vault, user-assigned identity, federated credential
   *.tf          # root: wires the modules to a target subscription
+app/
+  payments/     # FastAPI settlement service (api + worker share one image)
 k8s/
   apps/         # application manifests (synced by ArgoCD)
+    payments/   #   the settlement app: api, worker, redis, NetworkPolicy, KEDA
+  argocd/       # ArgoCD Application CRs
+scripts/        # deploy + load-test helpers
+.github/
+  workflows/    # CI: build & push the payments image to ghcr.io
 ```
 
 ## Quick start
@@ -92,6 +100,38 @@ terraform -chdir=terraform apply
 # 2. Connect kubectl
 az aks get-credentials -g <resource-group> -n aksgitops-aks --overwrite-existing
 ```
+
+## Payments settlement app (demo)
+
+A small tokenized-asset settlement service that exercises the whole platform. **Simulated only — no real funds, wallets, or exchange keys.**
+
+```
+POST /transfer ─► payments-api ──sign (Key Vault key, via Workload Identity)──┐
+                                 ──store PENDING──► Redis ledger               │
+                                 ──enqueue──► Service Bus (demo-queue)         │
+                                                     │ KEDA scales 0..N        │
+                                                     ▼                          │
+                              settlement-worker ──verify sig──► settle ──► Redis (SETTLED)
+GET /ledger ◄── payments-api ◄── reads ◄────────────────────────────────────────┘
+```
+
+- **One image, two roles** — `app/payments` builds a single image; the API and the worker run it with different commands. Built by GitHub Actions → `ghcr.io/rbpal/payments-api`.
+- **Security** — transfers are signed by a Key Vault **key** that never leaves the vault; idempotency keys prevent double-spend; the `payments` namespace runs under a Cilium **default-deny** NetworkPolicy with an explicit allowlist; containers are non-root, read-only-rootfs, drop all caps.
+- **Durable vs ephemeral** — the image (ghcr) and manifests (Git) persist; the running pods are recreated each session.
+
+```bash
+# Deploy into the current cluster (substitutes placeholders, creates the SB secret)
+./scripts/deploy_payments.sh
+
+# Reach it privately (no public IP) and test
+kubectl -n payments port-forward svc/payments-api 8080:80   # keep running
+open http://localhost:8080/docs                              # Swagger UI
+python3 scripts/send_transfers.py 20                         # fire 20 transfers
+python3 scripts/send_transfers.py ledger                     # watch PENDING -> SETTLED
+watch kubectl -n payments get pods                           # KEDA scales 0 -> N -> 0
+```
+
+> The Key Vault **signing key** + a federated credential for the `payments-api` ServiceAccount are added in the Terraform identity module; the image must be a **public** ghcr package (or add an imagePullSecret) for AKS to pull it.
 
 ## Notes
 

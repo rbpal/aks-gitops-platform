@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: settlement-worker
+  namespace: payments
+  labels:
+    app: settlement-worker
+spec:
+  replicas: 0          # KEDA owns the replica count; starting at 0 proves scale-to-zero
+  selector:
+    matchLabels:
+      app: settlement-worker
+  template:
+    metadata:
+      labels:
+        app: settlement-worker
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: payments-api   # same identity as the API → can VERIFY signatures
+      containers:
+        - name: worker
+          image: ghcr.io/rbpal/payments-api:latest
+          command: ["python", "worker.py"]   # override the image's default (uvicorn)
+          ports:
+            - containerPort: 8080            # worker /metrics
+          env:
+            - name: REDIS_HOST
+              value: "redis"
+            - name: KEY_VAULT_NAME
+              value: "__KEY_VAULT_NAME__"
+            - name: SIGNING_KEY_NAME
+              value: "tx-signer"
+            - name: SERVICEBUS_QUEUE
+              value: "demo-queue"
+            - name: SETTLE_SECONDS
+              value: "2"
+            - name: SERVICEBUS_CONNECTION
+              valueFrom:
+                secretKeyRef:
+                  name: servicebus-conn
+                  key: connection-string
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

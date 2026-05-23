@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments-api
+  namespace: payments
+  labels:
+    app: payments-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payments-api
+  template:
+    metadata:
+      labels:
+        app: payments-api
+        azure.workload.identity/use: "true"   # CRITICAL — triggers WI token injection
+    spec:
+      serviceAccountName: payments-api
+      containers:
+        - name: api
+          image: ghcr.io/rbpal/payments-api:latest   # built by GitHub Actions (Phase 2)
+          ports:
+            - containerPort: 8080
+          env:
+            - name: REDIS_HOST
+              value: "redis"
+            - name: KEY_VAULT_NAME
+              value: "__KEY_VAULT_NAME__"            # terraform output -raw key_vault_name
+            - name: SIGNING_KEY_NAME
+              value: "tx-signer"
+            - name: SERVICEBUS_QUEUE
+              value: "demo-queue"
+            - name: SERVICEBUS_CONNECTION
+              valueFrom:
+                secretKeyRef:
+                  name: servicebus-conn               # created by deploy_payments.sh
+                  key: connection-string
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp                          # writable scratch (HOME=/tmp); root FS stays read-only
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payments-api
+  namespace: payments
+  labels:
+    app: payments-api
+spec:
+  selector:
+    app: payments-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+  # ClusterIP (default) — no public load balancer. Reach it with:
+  #   kubectl -n payments port-forward svc/payments-api 8080:80

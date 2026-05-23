@@ -1,0 +1,97 @@
+# Least-privilege networking for the payments namespace, enforced by Cilium.
+# Model: deny everything, then open ONLY the flows the app actually needs.
+#
+# Note on testing: `kubectl port-forward` still works under default-deny — the
+# kubelet enters the pod's network namespace and connects to localhost, which is
+# loopback and not governed by NetworkPolicy. So no public/ingress hole is needed
+# to reach the API for the demo.
+---
+# 1. Default-deny all ingress AND egress for every pod in the namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: payments
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# 2. Allow DNS egress to CoreDNS — without this, name resolution dies and the app
+#    can't even find `redis` or the Azure endpoints. (Classic default-deny gotcha.)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: payments
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# 3. Redis accepts ingress ONLY from the api and the worker, on 6379.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-redis-ingress
+  namespace: payments
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: payments-api
+        - podSelector:
+            matchLabels:
+              app: settlement-worker
+      ports:
+        - protocol: TCP
+          port: 6379
+---
+# 4. api + worker egress: to Redis (in-cluster) and to Azure PaaS (Service Bus +
+#    Key Vault) on 443/5671. Everything else stays denied.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-app-egress
+  namespace: payments
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: ["payments-api", "settlement-worker"]
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0          # Service Bus + Key Vault are external to the cluster
+      ports:
+        - protocol: TCP
+          port: 443                  # Key Vault + Service Bus (AMQP-over-WebSockets / mgmt)
+        - protocol: TCP
+          port: 5671                 # Service Bus AMQP

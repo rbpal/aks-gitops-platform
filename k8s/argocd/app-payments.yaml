@@ -1,0 +1,40 @@
+# GitOps option for the payments app.
+#
+# CAVEAT: k8s/apps/payments contains two sandbox-specific placeholders
+# (__KV_READER_CLIENT_ID__, __KEY_VAULT_NAME__) and depends on the
+# `servicebus-conn` Secret. ArgoCD applies manifests verbatim, so for an
+# ephemeral sandbox the simplest path is scripts/deploy_payments.sh (it
+# substitutes the placeholders + creates the Secret at apply time).
+#
+# To drive payments through ArgoCD instead, resolve those values first — e.g. a
+# Kustomize overlay with the cluster's client-id/KV name, or commit them for a
+# stable cluster. Then this Application reconciles the rest like podinfo.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: payments
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/rbpal/aks-gitops-platform.git
+    targetRevision: main
+    path: k8s/apps/payments
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: payments
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

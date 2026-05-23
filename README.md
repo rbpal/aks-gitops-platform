@@ -49,24 +49,27 @@ A hands-on Azure platform-engineering lab: a Terraform-provisioned **AKS** clust
    |      argocd      : server . repo-server . app-controller (StatefulSet) |
    |      demo        : podinfo x3           (ArgoCD-synced from Git)       |
    |                    kv-reader            (Workload Identity)            |
-   |                    queue-worker 0..5    (KEDA-scaled)                  |
+   |                    queue-worker 0..5    (KEDA, standalone demo)        |
+   |      payments    : payments-api . redis . settlement-worker 0..5       |
+   |                    (KV-key signing; KEDA-scaled; default-deny netpol)  |
    +------------------------------------------------------------------------+
         |                                 |
-   OIDC federation                   poll queue depth
-   (token exchange,                  (SAS connection string)
-    no stored secret)                                        
+   Workload Identity                 KEDA polls queue depth
+   (kv-reader reads a secret;        (SAS connection string;
+    payments signs with a KV key)     drives both KEDA demos)
         v                                 v
    +---------------------------+    +------------------------------+
-   | Key Vault (access-policy) |    | Service Bus > demo-queue     |
-   |   secret: demo-secret     |    |   (Basic SKU)                |
+   | Key Vault                 |    | Service Bus > demo-queue     |
+   |   secret: demo-secret     |    |   Basic SKU                  |
+   |   key:    signing key     |    |   one queue, both demos      |
    +---------------------------+    +------------------------------+
 ```
 
 **Three flows worth tracing:**
 
 1. **GitOps delivery (pull).** You `git push`; ArgoCD inside the cluster pulls and reconciles the live state to match Git. CI never holds cluster credentials.
-2. **Workload Identity (no secrets).** The `kv-reader` pod's ServiceAccount token is federated (OIDC) to an Azure managed identity and exchanged for an AAD token to read Key Vault — nothing stored in the cluster.
-3. **Event-driven scaling.** KEDA watches `demo-queue` depth on Service Bus and scales `queue-worker` between 0 and 5 replicas, including scale-to-zero when idle.
+2. **Workload Identity (no secrets).** The `kv-reader` pod's ServiceAccount token is federated (OIDC) to an Azure managed identity and exchanged for an AAD token to read Key Vault — nothing stored in the cluster. The payments API uses the same path to sign with a Key Vault **key**.
+3. **Event-driven scaling.** KEDA watches `demo-queue` depth on Service Bus and scales a worker between 0 and 5 replicas, including scale-to-zero when idle — both the standalone `queue-worker` and the payments `settlement-worker` scale this way.
 
 > Pod IPs (`10.244.0.0/16`) are an **overlay** — they don't consume VNet address space, so the `/24` node subnet supports far more pods than its 250-odd IPs. Every Service is `ClusterIP`; there is no public load balancer.
 
@@ -75,19 +78,24 @@ A hands-on Azure platform-engineering lab: a Terraform-provisioned **AKS** clust
 ```
 terraform/
   modules/
-    network/    # VNet + node subnet
-    aks/        # cluster: Overlay, Cilium, OIDC, Workload Identity, KEDA
-    identity/   # Key Vault, user-assigned identity, federated credential
-  *.tf          # root: wires the modules to a target subscription
+    network/      # VNet + node subnet
+    aks/          # cluster: Overlay, Cilium, OIDC, Workload Identity, KEDA
+    identity/     # Key Vault (secret + signing key), UAMI, federated creds
+    servicebus/   # Service Bus namespace + demo-queue
+  *.tf            # root: wires the modules to a target subscription
 app/
-  payments/     # FastAPI settlement service (api + worker share one image)
+  payments/       # FastAPI settlement service (api + worker share one image)
 k8s/
-  apps/         # application manifests (synced by ArgoCD)
-    payments/   #   the settlement app: api, worker, redis, NetworkPolicy, KEDA
-  argocd/       # ArgoCD Application CRs
-scripts/        # deploy + load-test helpers
+  apps/           # application manifests
+    podinfo/      #   sample app, ArgoCD-synced from Git
+    payments/     #   the settlement app: api, worker, redis, NetworkPolicy, KEDA
+    queue-worker/ #   stand-in worker for the standalone KEDA demo
+    keyvault-reader-sa.yaml / kv-reader-cli.yaml  # Workload Identity -> Key Vault
+  keda/           # standalone KEDA ScaledObject + TriggerAuthentication (demo ns)
+  argocd/         # ArgoCD Application CRs
+scripts/          # deploy_payments.sh, send_transfers.py, send_messages.py
 .github/
-  workflows/    # CI: build & push the payments image to ghcr.io
+  workflows/      # CI: build & push the payments image to ghcr.io
 ```
 
 ## Quick start
@@ -99,6 +107,24 @@ terraform -chdir=terraform apply
 
 # 2. Connect kubectl
 az aks get-credentials -g <resource-group> -n aksgitops-aks --overwrite-existing
+```
+
+## Standalone KEDA demo
+
+The leanest way to see scale-to-zero, independent of the payments app: a busybox
+`queue-worker` that does no real work, scaled purely on `demo-queue` depth.
+
+```bash
+kubectl create namespace demo
+# servicebus-conn Secret holds the SAS connection string (from terraform output)
+kubectl -n demo create secret generic servicebus-conn \
+  --from-literal=connection-string="$(terraform -chdir=terraform output -raw servicebus_keda_connection_string)"
+kubectl apply -f k8s/apps/queue-worker/ -f k8s/keda/
+
+SB_CONN="$(terraform -chdir=terraform output -raw servicebus_keda_connection_string)"
+SB_CONN="$SB_CONN" python3 scripts/send_messages.py 20   # enqueue -> KEDA scales 0 -> N
+watch kubectl -n demo get pods                            # then idle -> back to 0
+SB_CONN="$SB_CONN" python3 scripts/send_messages.py drain # empty the queue
 ```
 
 ## Payments settlement app (demo)

@@ -42,7 +42,8 @@ resource "azurerm_key_vault_access_policy" "admin" {
   object_id    = var.admin_object_id
 
   secret_permissions = ["Get", "List", "Set", "Delete", "Purge", "Recover"]
-  key_permissions    = ["Get", "List", "Create", "Delete", "Purge", "Recover"] # so TF can create the signing key
+  # GetRotationPolicy: the azurerm key resource reads the rotation policy post-create.
+  key_permissions = ["Get", "List", "Create", "Delete", "Purge", "Recover", "GetRotationPolicy"]
 }
 
 # Access policy: the managed identity gets READ on secrets — the "Key Vault

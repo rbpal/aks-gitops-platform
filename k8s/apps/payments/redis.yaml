@@ -19,6 +19,8 @@ spec:
       labels:
         app: redis
     spec:
+      securityContext:
+        fsGroup: 999            # make the /data emptyDir writable by the redis group
       containers:
         - name: redis
           image: redis:7.4-alpine
@@ -33,6 +35,9 @@ spec:
               cpu: 100m
               memory: 128Mi
           securityContext:
+            runAsNonRoot: true   # entrypoint skips its root-only `chown /data` when non-root
+            runAsUser: 999
+            runAsGroup: 999
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]

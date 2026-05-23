@@ -25,6 +25,8 @@ spec:
           env:
             - name: REDIS_HOST
               value: "redis"
+            - name: REDIS_PORT
+              value: "6379"        # explicit: overrides the K8s service-link REDIS_PORT=tcp://...
             - name: KEY_VAULT_NAME
               value: "__KEY_VAULT_NAME__"            # terraform output -raw key_vault_name
             - name: SIGNING_KEY_NAME

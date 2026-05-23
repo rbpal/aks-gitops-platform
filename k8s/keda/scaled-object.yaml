@@ -1,0 +1,19 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: queue-worker-scaler
+  namespace: demo
+spec:
+  scaleTargetRef:
+    name: queue-worker
+  pollingInterval: 15 # seconds between queue-depth checks (default 30)
+  cooldownPeriod: 60 # seconds idle before scaling back to zero
+  minReplicaCount: 0 # scale-to-zero
+  maxReplicaCount: 5
+  triggers:
+    - type: azure-servicebus
+      metadata:
+        queueName: demo-queue
+        messageCount: "5" # ~1 replica per 5 queued messages
+      authenticationRef:
+        name: azure-servicebus-auth

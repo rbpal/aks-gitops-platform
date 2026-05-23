@@ -1,0 +1,13 @@
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: azure-servicebus-auth
+  namespace: demo
+spec:
+  # SANDBOX: connection-string auth (role assignments are denied). The string
+  # lives in the `servicebus-conn` Secret, created from the Terraform output.
+  # Production would use: podIdentity: { provider: azure-workload }.
+  secretTargetRef:
+    - parameter: connection
+      name: servicebus-conn
+      key: connection-string

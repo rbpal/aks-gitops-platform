@@ -36,6 +36,12 @@ variable "node_vm_size" {
   default     = "Standard_B2s"
 }
 
+variable "outbound_type" {
+  description = "Cluster egress. 'userDefinedRouting' forces egress through the firewall (needs the 0/0 UDR + firewall up first); 'loadBalancer' is the default."
+  type        = string
+  default     = "loadBalancer"
+}
+
 variable "tags" {
   description = "Tags applied to the cluster."
   type        = map(string)

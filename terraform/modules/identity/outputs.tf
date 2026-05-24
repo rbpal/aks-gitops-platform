@@ -8,6 +8,11 @@ output "key_vault_uri" {
   value       = azurerm_key_vault.this.vault_uri
 }
 
+output "key_vault_id" {
+  description = "Key Vault resource ID — target for the private endpoint."
+  value       = azurerm_key_vault.this.id
+}
+
 output "kv_reader_client_id" {
   description = "Managed identity client_id — goes in the SA annotation azure.workload.identity/client-id."
   value       = azurerm_user_assigned_identity.kv_reader.client_id

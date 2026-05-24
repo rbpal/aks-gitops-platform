@@ -95,3 +95,25 @@ spec:
           port: 443                  # Key Vault + Service Bus (AMQP-over-WebSockets / mgmt)
         - protocol: TCP
           port: 5671                 # Service Bus AMQP
+---
+# 5. Allow ingress to the API ONLY from the ingress-nginx controller namespace
+#    (the FD -> AzFW -> internal LB -> NGINX path). default-deny blocks the rest.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-api
+  namespace: payments
+spec:
+  podSelector:
+    matchLabels:
+      app: payments-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080

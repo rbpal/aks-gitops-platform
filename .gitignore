@@ -227,6 +227,9 @@ docs/
 **/.terraform/*
 *.tfstate
 *.tfstate.*
+# Saved plan files can embed sensitive values — never commit
+*.tfplan
+tfplan.out
 crash.log
 crash.*.log
 override.tf

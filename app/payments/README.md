@@ -13,6 +13,13 @@ POST /transfer ─► payments-api ──sign (Key Vault key, via Workload Ident
 GET /ledger ◄── payments-api ◄── reads ◄────────────────────────────────────────┘
 ```
 
+## How it's exposed (see the root README for the full diagram)
+Publicly reachable through the platform's secure ingress:
+`Front Door (HTTPS) → Azure Firewall (DNAT) → ingress-nginx (NodePort) → payments-api`.
+`ingress-nginx` enforces an **`X-Azure-FDID` origin lock** (requests not carrying this
+Front Door's ID get `403`). Key Vault signing flows over a **private endpoint**
+(in-VNet); Service Bus is reached over the firewall (Basic SKU — no Private Link).
+
 ## One image, two roles
 `app.py` (API) and `worker.py` (settler) ship in **one** image; the Deployments
 pick the role via the container command. `common.py` holds the shared config,

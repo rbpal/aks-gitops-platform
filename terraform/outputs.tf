@@ -8,9 +8,14 @@ output "location" {
   value       = data.azurerm_resource_group.sandbox.location
 }
 
-output "vnet_id" {
-  description = "VNet ID."
-  value       = module.network.vnet_id
+output "hub_vnet_id" {
+  description = "Hub VNet ID (Azure Firewall)."
+  value       = module.network.hub_vnet_id
+}
+
+output "spoke_vnet_id" {
+  description = "Spoke VNet ID (AKS workloads)."
+  value       = module.network.spoke_vnet_id
 }
 
 output "aks_subnet_id" {
@@ -71,4 +76,21 @@ output "servicebus_keda_connection_string" {
   description = "SAS connection string for the KEDA secret + demo sender."
   value       = module.servicebus.keda_connection_string
   sensitive   = true
+}
+
+# ---- Secure web app (FD -> AzFW -> internal LB -> AKS) ----
+
+output "firewall_public_ip" {
+  description = "Azure Firewall data public IP (the Front Door origin)."
+  value       = module.firewall.firewall_public_ip
+}
+
+output "frontdoor_endpoint" {
+  description = "Public web app URL: https://<this>"
+  value       = module.frontdoor.endpoint_hostname
+}
+
+output "frontdoor_id" {
+  description = "X-Azure-FDID — substitute into the payments-api Ingress to lock the origin to this Front Door."
+  value       = module.frontdoor.frontdoor_id
 }

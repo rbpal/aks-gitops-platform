@@ -43,6 +43,7 @@ resource "azurerm_kubernetes_cluster" "this" {
     service_cidr        = "10.0.0.0/16"
     dns_service_ip      = "10.0.0.10"
     load_balancer_sku   = "standard"
+    outbound_type       = var.outbound_type # userDefinedRouting => egress via the firewall UDR
   }
 
   identity {

@@ -1,0 +1,29 @@
+# Ingress for the payments API, fronted by Front Door.
+# Origin lock: only requests carrying THIS Front Door's X-Azure-FDID are served;
+# anything hitting the firewall/LB directly (without the header) gets 403.
+# __FRONT_DOOR_ID__ is substituted from `terraform output -raw frontdoor_id`
+# (same placeholder pattern as __KEY_VAULT_NAME__ in deploy_payments.sh).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: payments-api
+  namespace: payments
+  annotations:
+    nginx.ingress.kubernetes.io/server-snippet: |
+      if ($http_x_azure_fdid != "__FRONT_DOOR_ID__") {
+        return 403;
+      }
+spec:
+  ingressClassName: nginx
+  rules:
+    # No host match — Front Door sends the origin (firewall IP) as Host, so we
+    # accept any Host and route everything to the API.
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: payments-api
+                port:
+                  number: 80

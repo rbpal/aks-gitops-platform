@@ -1,0 +1,37 @@
+# Helm values for ingress-nginx as the target of the Azure Firewall DNAT
+# (FD -> AzFW -> NodePort -> NGINX -> payments-api).
+#
+# Install / upgrade:
+#   helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+#   helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+#     -n ingress-nginx --create-namespace -f k8s/ingress/ingress-nginx-values.yaml
+#
+# WHY NODEPORT (not an internal LoadBalancer):
+#   An internal Azure LB in a BYO (bring-your-own) subnet requires the AKS cluster
+#   managed identity to hold "Network Contributor" (subnets/read+join) on that
+#   subnet. This locked-down sandbox DENIES roleAssignments/write, so the
+#   cloud-provider 403s when creating the internal LB. NodePort needs no Azure LB
+#   and no role assignment: kube-proxy opens a fixed port on every node, and the
+#   firewall DNATs inbound 80 -> <nodeIP>:30080. (Prod: grant the MI Network
+#   Contributor on the subnet and use an internal LB with a pinned frontend IP.)
+controller:
+  service:
+    type: NodePort
+    nodePorts:
+      http: 30080
+      https: 30443
+  # The payments Ingress uses a server-snippet to enforce the Front Door origin
+  # lock (403 unless X-Azure-FDID matches). Modern ingress-nginx disables snippets
+  # by default (annotation-injection CVEs) and classes server-snippet as "Critical".
+  # Enable both for the lab. PROD: prefer locking the firewall DNAT source to the
+  # AzureFrontDoor.Backend service tag + validating X-Azure-FDID at a WAF/APIM,
+  # rather than re-enabling nginx snippets cluster-wide.
+  allowSnippetAnnotations: true
+  config:
+    annotations-risk-level: Critical
+  # keep it lean for the lab
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 90Mi
